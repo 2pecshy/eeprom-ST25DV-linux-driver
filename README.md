@@ -8,8 +8,9 @@ Because the EEPROM can also be write by NFC, no cache of the eeprom is done, to 
 the right data even if a write has been done by NFC.
 
 This module has been tested on RaspberryPi Model B:
-OS: Raspbian
-Kernel: linux 4.14.30+
+	
+	OS: Raspbian
+	Kernel: linux 4.14.30+
 
 The STV25DV have two areas:
 
@@ -83,4 +84,4 @@ write test of the user area:
 read data write by i2c with android smartphone using NFC:
 
 	Those screenshots have been done with STMicroelectronics ST25 Android app:
-![alt text](https://raw.githubusercontent.com/username/projectname/branch/path/to/img.png) ![alt text](https://raw.githubusercontent.com/username/projectname/branch/path/to/img.png) ![alt text](https://raw.githubusercontent.com/username/projectname/branch/path/to/img.png)
+![alt text](https://raw.githubusercontent.com/2pecshy/eeprom-ST25DV-linux-driver/blob/master/res/android1.png) ![alt text](https://raw.githubusercontent.com/2pecshy/eeprom-ST25DV-linux-driver/blob/master/res/android2.png) ![alt text](https://raw.githubusercontent.com/2pecshy/eeprom-ST25DV-linux-driver/blob/master/res/android3.png)
