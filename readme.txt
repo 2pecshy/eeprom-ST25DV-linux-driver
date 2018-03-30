@@ -1,5 +1,3 @@
-# eeprom-ST25DV-linux-driver
-
 ST25DV I2C/NFC EEPROM driver
 
 This module is a simple driver to drive the ST25DV eeprom. The ST25DV is a EEPROM
