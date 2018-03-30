@@ -85,4 +85,4 @@ read data write by i2c with android smartphone using NFC:
 
 	Those screenshots have been done with STMicroelectronics ST25 Android app:
 
-![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android1.png) ![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android2.png) ![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android%203.png)
+![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android1.png) ![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android%203.png)
