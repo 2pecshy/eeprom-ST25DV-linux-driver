@@ -1,18 +1,18 @@
 # eeprom-ST25DV-linux-driver
 
-ST25DV I2C/NFC EEPROM driver
+##ST25DV I2C/NFC EEPROM driver
 
 This module is a simple driver to drive the ST25DV eeprom. The ST25DV is a EEPROM
 readable and writeable by i2c and also by wireless Near Field Communication (NFC). 
 Because the EEPROM can also be write by NFC, no cache of the eeprom is done, to get 
 the right data even if a write has been done by NFC.
 
-This module has been tested on RaspberryPi Model B:
+###This module has been tested on RaspberryPi Model B:
 	
 	OS: Raspbian
 	Kernel: linux 4.14.30+
 
-The STV25DV have two areas:
+####The STV25DV have two areas:
 
 The system configuration at address 0x57:
 
@@ -24,7 +24,7 @@ The user area at address 0x53:
 	The user area is the area to store user data like NDEF file.
 	The user area is available at /sys/bus/i2c/devices/X-0053/st25dv_user
 
-Setup on RaspberryPi:
+###Setup on RaspberryPi:
 
 To compile a module, linux headers are requested:
 
@@ -34,7 +34,7 @@ Be sure to have I2C interface enable:
 
 	sudo raspi-config
 
-Install:
+###Install:
 
 Compile the module:
 
@@ -48,7 +48,14 @@ Tell the presence of the ST25DV to the kernel:
 
 	echo st25dv 0x53 > /sys/bus/i2c/devices/i2c-X/new_device
 
-Test the driver:
+####Test the driver:
+
+Read test of the system configuration area:
+
+	xxd /sys/bus/i2c/devices/1-0057/st25dv_sys
+	00000000: 8803 0100 000f 000f 000f 0000 0001 0700  ................
+	00000010: 0000 0000 7f00 0324 c662 0703 0024 02e0  .......$.b...$..
+	00000020: 12ff ffff                                ....
 
 Read test of the user area:
 
@@ -81,8 +88,9 @@ write test of the user area:
 	00000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 	....
 
-read data write by i2c with android smartphone using NFC:
+####read data write by i2c with android smartphone using NFC:
 
-	Those screenshots have been done with STMicroelectronics ST25 Android app:
+Those screenshots have been done with STMicroelectronics ST25 Android app:
+[STMicroelectronics ST25 APP](https://play.google.com/store/apps/details?id=com.st.st25nfc)
 
 ![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android1.png) ![](https://github.com/2pecshy/eeprom-ST25DV-linux-driver/raw/master/res/android%203.png)

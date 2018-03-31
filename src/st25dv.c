@@ -65,7 +65,7 @@ retry_:
 			nack++;
 			goto retry_;
 		}
-		udelay(1000);
+		udelay(500);
 		r_size = i2c_smbus_read_byte(client);
 		if(data->data[cur_off] < 0){
 			nack++;
@@ -166,7 +166,7 @@ static int st25dv_detect(struct i2c_client *client, struct i2c_board_info *info)
 static int st25dv_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-	int res;
+	int status;
 	struct st25dv_data *data;
 	struct st25dv_data *sys_data;
 
@@ -180,36 +180,41 @@ static int st25dv_probe(struct i2c_client *client,
 	if (!data)
 		goto err_mem;
 	data->data = kmalloc(sizeof(u8)*USER_MEM_SIZE, GFP_KERNEL);
-	if (!data->data){
-		devm_kfree(&client->dev, data);
-		goto err_mem;
-	}
+	if (!data->data)
+		goto err_mem2;
 	sys_data = devm_kzalloc(&client_dummy->dev, sizeof(struct st25dv_data), GFP_KERNEL);
-	if (!sys_data){
-		kfree(data->data);
-		devm_kfree(&client->dev, data);
-		goto err_mem;
-	}
+	if (!sys_data)
+		goto err_mem1;
 	sys_data->data = kmalloc(sizeof(u8)*SYS_MEM_SIZE, GFP_KERNEL);
-	if (!sys_data->data){
-		devm_kfree(&client_dummy->dev, sys_data);
-		kfree(data->data);
-		devm_kfree(&client->dev, data);
-		goto err_mem;
-	}
-
+	if (!sys_data->data)
+		goto err_mem0;
 	memset(data->data, 0xff, USER_MEM_SIZE);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
 	i2c_set_clientdata(client, data);
 	i2c_set_clientdata(client_dummy, sys_data);
 	mutex_init(&update_lock);
-	printk(KERN_WARNING "st25dv eeprom create bin file.\n");
-	/* create two sysfs eeprom files to for user area and system area */
-	res = sysfs_create_bin_file(&client->dev.kobj, &st25dv_user_attr);
-	if(res < 0)
-		return res;
 
-	return sysfs_create_bin_file(&client_dummy->dev.kobj, &st25dv_sys_attr);
+	/* create two sysfs eeprom files to for user area and system area */
+	status = sysfs_create_bin_file(&client->dev.kobj, &st25dv_user_attr);
+	if(status < 0){
+		printk(KERN_WARNING "fail to create bin file.\n");
+		return status;
+	}
+	status = sysfs_create_bin_file(&client_dummy->dev.kobj, &st25dv_sys_attr);
+	if(status < 0){
+		printk(KERN_WARNING "fail to create bin file.\n");
+		sysfs_remove_bin_file(&client->dev.kobj, &st25dv_user_attr);
+		return status;
+	}
+	printk(KERN_WARNING "st25dv eeprom create bin file.\n");
+	return status;
+
+err_mem0:
+	devm_kfree(&client_dummy->dev, sys_data);
+err_mem1:
+	kfree(data->data);
+err_mem2:
+	devm_kfree(&client->dev, data);
 err_mem:
 	printk(KERN_WARNING "not enougth memory.\n");
 	return -ENOMEM;
