@@ -12,14 +12,13 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 #include <linux/device.h>
-#include <linux/capability.h>
-#include <linux/jiffies.h>
-#include <linux/delay.h>
 #include <linux/i2c.h>
+#include <linux/uaccess.h>
+#include <linux/delay.h>
 #include <linux/mutex.h>
 
 #define DYN_REG_SIZE		0x8
@@ -75,7 +74,6 @@ static ssize_t st25dv_read_area(struct file *filp, struct kobject *kobj,
 
 	while(data->type != area)
 		data = data->next;
-
 	mutex_lock(&update_lock);
 	for(cur_off = off; cur_off-off < count; cur_off++){
 		nack = 0;
@@ -156,7 +154,6 @@ static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 
 	while(data->type != area)
 		data = data->next;
-
 	mutex_lock(&update_lock);
 	memcpy(data->data + off, buf, count);
 	not_write = count;
@@ -185,6 +182,7 @@ retry_:
 
 	mutex_unlock(&update_lock);
 	printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
+
 	return count;
 }
 
@@ -200,7 +198,6 @@ static ssize_t st25dv_send_pwd_req(struct file *filp, struct kobject *kobj,
 		printk(KERN_WARNING "st25dv: send pwd cmd fail count=%d.\n", count);
 		return count;
 	}
-
 	nack = 0;
 	pwd_req[0] = 0x09;
 	pwd_req[1] = 0x00;
@@ -216,12 +213,11 @@ static ssize_t st25dv_send_pwd_req(struct file *filp, struct kobject *kobj,
 	mutex_lock(&update_lock);
 retry_:
 	if(nack > MAX_TRY){
-		printk(KERN_WARNING "st25dv: send pwd cmd fail r_size=%d.\n", r_size);
+		mutex_unlock(&update_lock);
 		return r_size;
 	}
 	r_size = i2c_master_send(client, pwd_req, PWD_REQ_SIZE);
 	if(r_size < 0){
-		mutex_unlock(&update_lock);
 		nack++;
 		mdelay(5);
 		goto retry_;
@@ -449,6 +445,7 @@ err_mem1:
 	kfree(sys_data->data);
 err_mem2:
 	devm_kfree(&client_sys_area->dev, sys_data);
+	i2c_unregister_device(client_sys_area);
 err_mem3:
 	kfree(data->data);
 err_mem4:
@@ -472,6 +469,9 @@ static int st25dv_remove(struct i2c_client *client)
 	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_user_attr);
 	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
+	i2c_unregister_device(client_sys_area);
 
 	return 0;
 }
