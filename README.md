@@ -52,7 +52,7 @@ Tell the presence of the ST25DV to the kernel:
 
 Read test of the system configuration area:
 
-	xxd /sys/bus/i2c/devices/1-0057/st25dv_sys
+	xxd /sys/bus/i2c/devices/X-0057/st25dv_sys
 	00000000: 8803 0100 000f 000f 000f 0000 0001 0700  ................
 	00000010: 0000 0000 7f00 0324 c662 0703 0024 02e0  .......$.b...$..
 	00000020: 12ff ffff                                ....
@@ -72,7 +72,7 @@ Read test of the user area:
 	00000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 	....
 
-write test of the user area:
+Write test of the user area:
 
 	uname -a > /sys/bus/i2c/devices/X-0053/st25dv_user	
 	xxd /sys/bus/i2c/devices/X-0053/st25dv_user
@@ -87,6 +87,24 @@ write test of the user area:
 	00000080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 	00000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 	....
+
+Enable security session status by present password:
+
+	sudo dd if=/dev/zero of=/sys/bus/i2c/devices/X-0057/st25dv_present_pwd bs=8c count=1
+
+Check security session status:
+
+	xxd -s4 -l1 -p /sys/bus/i2c/devices/1-0053/st25dv_dyn_reg
+	01
+
+Disable security session status by present bad password:
+
+	sudo dd if=/dev/urandom of=/sys/bus/i2c/devices/X-0057/st25dv_present_pwd bs=8c count=1
+
+Change password for security session (need security session status = 0x01):
+
+	dd if=/dev/urandom of=pwd_test.bin bs=8c count=1
+	sudo dd if=pwd_test.bin of=/sys/bus/i2c/devices/X-0057/st25dv_write_pwd
 
 #### read data write by i2c with android smartphone using NFC:
 
