@@ -49,7 +49,7 @@ enum area_type{
 /*the st25dv eeprom have two areas, the user area, and the system 
 area to manage read/write protection for the NFC interface and I2C
 interface. To drive the system area a dummy i2c_client is used*/
-
+//static int mem_config[5] = {256, 256, 512, 2000, 8000};
 static struct mutex update_lock;//protect for concurrent updates
 static struct i2c_client *client_sys_area; //i2c_client of the system area
 
@@ -140,8 +140,9 @@ retry_:
 
 	return count;
 }
-//I2C_SMBUS_BLOCK_MAX = 9 page writes twt = 9 * 5ms
 
+//I2C_SMBUS_BLOCK_MAX = 9 page writes
+//MAX tw = 9 * 5ms
 static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 			struct bin_attribute *bin_attr,
 			char *buf, loff_t off, size_t count, enum area_type area)
@@ -417,16 +418,16 @@ static int st25dv_probe(struct i2c_client *client,
 		goto err_sysfs;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
 	if(status < 0)
-		goto err_sysfs0;
+		goto err_sysfs3;
 	status = sysfs_create_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
 	if(status < 0)
-		goto err_sysfs1;
+		goto err_sysfs2;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
 	if(status < 0)
-		goto err_sysfs2;
+		goto err_sysfs1;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
 	if(status < 0)
-		goto err_sysfs3;
+		goto err_sysfs0;
 	printk(KERN_WARNING "st25dv eeprom create bin file.\n");
 	return status;
 err_sysfs0:
@@ -478,6 +479,10 @@ static int st25dv_remove(struct i2c_client *client)
 
 static const struct i2c_device_id st25dv_id[] = {
 	{ "st25dv", 0 },
+	{ "st25dv02k", 1 },
+	{ "st25dv04k", 2 },
+	{ "st25dv16k", 3 },
+	{ "st25dv64k", 4 },
 	{ }
 };
 
