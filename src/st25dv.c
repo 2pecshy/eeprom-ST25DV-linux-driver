@@ -39,6 +39,10 @@
 #define PWD1_POS 		2
 #define PWD2_POS 		11
 
+#define MEM_04K 512
+#define MEM_16K 2000
+#define MEM_64K 8000
+
 enum area_type{
 	USER_AREA,
 	SYS_AREA,
@@ -49,8 +53,7 @@ enum area_type{
 /*the st25dv eeprom have two areas, the user area, and the system 
 area to manage read/write protection for the NFC interface and I2C
 interface. To drive the system area a dummy i2c_client is used*/
-static int mem_config[4] = {512, 512, 2000, 8000};
-//static struct mutex update_lock;//protect for concurrent updates
+static int mem_config[4] = {MEM_04K, MEM_04K, MEM_16K, MEM_64K};
 
 /*one struct is used for each area*/
 struct st25dv_data {
@@ -63,7 +66,7 @@ struct st25dv_data {
 };
 
 /* Addresses to scan */
-static const unsigned short normal_i2c[] = { 0x53, 0x57, I2C_CLIENT_END };
+static const unsigned short normal_i2c[] = { USER_ADDR, SYS_ADDR, I2C_CLIENT_END };
 
 static ssize_t st25dv_read_area(struct file *filp, struct kobject *kobj,
 			   struct bin_attribute *bin_attr,
@@ -370,16 +373,6 @@ static int st25dv_detect(struct i2c_client *client, struct i2c_board_info *info)
 	return 0;
 }
 
-/*static int st25dv_mem_size_detect(struct i2c_client *client,
-				  const struct i2c_device_id *id)
-{
-	if(id->driver_data)
-	{
-		return 0;
-	}
-	return mem_config[id->driver_data];
-}*/
-
 static int st25dv_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -389,7 +382,8 @@ static int st25dv_probe(struct i2c_client *client,
 	struct st25dv_data *sys_data;
 	struct st25dv_data *dyn_reg_data;
 	struct i2c_client *client_sys_area;//i2c_client of the system area
-	
+
+	/*dummy client for the system area at addr 0x57*/
 	client_sys_area = i2c_new_dummy(client->adapter, SYS_ADDR);
 	if(!client_sys_area){
 		printk(KERN_WARNING "st25dv sys eeprom not detected.\n");
@@ -424,7 +418,8 @@ static int st25dv_probe(struct i2c_client *client,
 	memset(data->data, 0xff, mem_config[id->driver_data];);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
 	memset(dyn_reg_data->data, 0xff, DYN_REG_SIZE);
-	
+
+	/*set circular linked list and shared mutex*/
 	data->next = dyn_reg_data;
 	data->update_lock = st25dv_lock;
 	dyn_reg_data->next = sys_data;
@@ -436,14 +431,13 @@ static int st25dv_probe(struct i2c_client *client,
 	memcpy(&sys_data->bin_attr, &st25dv_sys_attr, sizeof(struct bin_attribute));
 	memcpy(&data->bin_attr, &st25dv_user_attr, sizeof(struct bin_attribute));
 	data->bin_attr.size = mem_config[id->driver_data];
-	
 	data->type = USER_AREA;
 	dyn_reg_data->type = DYN_REG_AREA;
 	sys_data->type = SYS_AREA;
 	i2c_set_clientdata(client, data);
 	i2c_set_clientdata(client_sys_area, sys_data);
 	
-	/* create tree sysfs eeprom files to for user area,
+	/* create tree sysfs eeprom files to for pwd, user area,
 	 system area and dynamic registers */
 	status = sysfs_create_bin_file(&client->dev.kobj, &data->bin_attr);
 	if(status < 0)
@@ -501,28 +495,24 @@ static int st25dv_remove(struct i2c_client *client)
 	while(tmp_data->type != SYS_AREA)
 		 tmp_data = tmp_data->next;	
 	client_sys_area = tmp_data->client;
-	/*remove sysfs files*/
-	/*sysfs_remove_bin_file(&client->dev.kobj, &data->bin_attr);
-	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
-	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
-	*/
+	/*remove pwd sysfs files*/
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
-	/*free st25dv sys mem data*/
+	/*free all st25dv data allocations*/
 	tmp_data = data->next;
 	while(tmp_data != data){
+	  /*remove areas sysfs files*/
 	  sysfs_remove_bin_file(&tmp_data->client->dev.kobj, &tmp_data->bin_attr);
 	  tmp_data2 = tmp_data;
 	  kfree(tmp_data->data);
 	  tmp_data = tmp_data->next;
+	  /*sys_area data will be free by i2c_unregister_device*/
 	  if(tmp_data2->type != SYS_AREA)
 	    kfree(tmp_data2);
 	}
 	/*free st25dv user mem data*/
 	kfree(data->data);
 	kfree(data->update_lock);
-	//kfree(data->bin_attr);
-	//kfree(data);
 	/*unregister dummy device*/
 	i2c_unregister_device(client_sys_area);
 
