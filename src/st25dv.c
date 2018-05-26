@@ -49,14 +49,16 @@ enum area_type{
 /*the st25dv eeprom have two areas, the user area, and the system 
 area to manage read/write protection for the NFC interface and I2C
 interface. To drive the system area a dummy i2c_client is used*/
-//static int mem_config[5] = {256, 256, 512, 2000, 8000};
-static struct mutex update_lock;//protect for concurrent updates
-static struct i2c_client *client_sys_area; //i2c_client of the system area
+static int mem_config[4] = {512, 512, 2000, 8000};
+//static struct mutex update_lock;//protect for concurrent updates
 
 /*one struct is used for each area*/
 struct st25dv_data {
 	u8 *data;//area data
 	enum area_type type;
+	struct bin_attribute bin_attr;
+	struct i2c_client *client;
+        struct mutex *update_lock;//protect for concurrent updates
 	struct st25dv_data *next;
 };
 
@@ -74,12 +76,12 @@ static ssize_t st25dv_read_area(struct file *filp, struct kobject *kobj,
 
 	while(data->type != area)
 		data = data->next;
-	mutex_lock(&update_lock);
+	mutex_lock(data->update_lock);
 	for(cur_off = off; cur_off-off < count; cur_off++){
 		nack = 0;
 retry_:
 		if(nack > MAX_TRY){
-			mutex_unlock(&update_lock);
+			mutex_unlock(data->update_lock);
 			return r_size;
 		}
 		r_size = i2c_smbus_write_byte_data(client, (cur_off >> 8) & 0x0ff, cur_off & 0x0ff);
@@ -97,7 +99,7 @@ retry_:
 		data->data[cur_off] = r_size;
 	}
 	memcpy(buf, &data->data[off], count);
-	mutex_unlock(&update_lock);
+	mutex_unlock(data->update_lock);
 	printk(KERN_WARNING "st25dv: %d byte reads.\n",count);
 
 	return count;
@@ -115,7 +117,7 @@ static ssize_t st25dv_write_area(struct file *filp, struct kobject *kobj,
 
 	while(data->type != area)
 		data = data->next;
-	mutex_lock(&update_lock);
+	mutex_lock(data->update_lock);
 	memcpy(data->data + off, buf, count);
 	for(cur_off = off; cur_off-off < count; cur_off++){
 		nack = 0;
@@ -124,7 +126,7 @@ static ssize_t st25dv_write_area(struct file *filp, struct kobject *kobj,
 		tmp |= cur_off & 0x00ff;
 retry_:
 		if(nack > MAX_TRY){
-			mutex_unlock(&update_lock);
+			mutex_unlock(data->update_lock);
 			return r_size;
 		}
 		r_size = i2c_smbus_write_word_data(client, (cur_off >> 8) & 0x0ff, tmp );
@@ -135,7 +137,7 @@ retry_:
 		}
 
 	}
-	mutex_unlock(&update_lock);
+	mutex_unlock(data->update_lock);
 	printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
 
 	return count;
@@ -143,6 +145,7 @@ retry_:
 
 //I2C_SMBUS_BLOCK_MAX = 9 page writes
 //MAX tw = 9 * 5ms
+//write_block is faster than write single byte but not supported by some adapter 
 static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 			struct bin_attribute *bin_attr,
 			char *buf, loff_t off, size_t count, enum area_type area)
@@ -155,7 +158,7 @@ static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 
 	while(data->type != area)
 		data = data->next;
-	mutex_lock(&update_lock);
+	mutex_lock(data->update_lock);
 	memcpy(data->data + off, buf, count);
 	not_write = count;
 	cur_off = off;
@@ -168,7 +171,7 @@ static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 		memcpy(tmp + 2, buf + cur_off, to_write);
 retry_:
 		if(nack > MAX_TRY){
-			mutex_unlock(&update_lock);
+			mutex_unlock(data->update_lock);
 			return r_size;
 		}
 		r_size = i2c_master_send(client, tmp, to_write+2);
@@ -181,7 +184,7 @@ retry_:
 		cur_off += to_write;
 	}
 
-	mutex_unlock(&update_lock);
+	mutex_unlock(data->update_lock);
 	printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
 
 	return count;
@@ -194,7 +197,8 @@ static ssize_t st25dv_send_pwd_req(struct file *filp, struct kobject *kobj,
 	u8 pwd_req[PWD_REQ_SIZE], *pwd_ptr1, *pwd_ptr2;
 	int r_size, off_tmp, nack;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
-
+	struct st25dv_data *data = i2c_get_clientdata(client);
+	
 	if(count != PWD_SIZE){
 		printk(KERN_WARNING "st25dv: send pwd cmd fail count=%d.\n", count);
 		return count;
@@ -211,10 +215,10 @@ static ssize_t st25dv_send_pwd_req(struct file *filp, struct kobject *kobj,
 		pwd_ptr1++;
 		pwd_ptr2++;
 	}
-	mutex_lock(&update_lock);
+	mutex_lock(data->update_lock);
 retry_:
 	if(nack > MAX_TRY){
-		mutex_unlock(&update_lock);
+		mutex_unlock(data->update_lock);
 		return r_size;
 	}
 	r_size = i2c_master_send(client, pwd_req, PWD_REQ_SIZE);
@@ -223,7 +227,7 @@ retry_:
 		mdelay(5);
 		goto retry_;
 	}
-	mutex_unlock(&update_lock);
+	mutex_unlock(data->update_lock);
 	printk(KERN_WARNING "st25dv: send pwd cmd send.\n");
 	return count;
 }
@@ -294,7 +298,7 @@ static ssize_t st25dv_write_pwd(struct file *filp, struct kobject *kobj,
 							 count, CMD_WRITE_PWD);
 }
 
-static const struct bin_attribute st25dv_user_attr = {
+static struct bin_attribute st25dv_user_attr = {
 	.attr = {
 		.name = "st25dv_user",
 		.mode = S_IRUGO|S_IWUGO,
@@ -366,60 +370,88 @@ static int st25dv_detect(struct i2c_client *client, struct i2c_board_info *info)
 	return 0;
 }
 
+/*static int st25dv_mem_size_detect(struct i2c_client *client,
+				  const struct i2c_device_id *id)
+{
+	if(id->driver_data)
+	{
+		return 0;
+	}
+	return mem_config[id->driver_data];
+}*/
+
 static int st25dv_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	int status;
+	struct mutex *st25dv_lock;
 	struct st25dv_data *data;
 	struct st25dv_data *sys_data;
 	struct st25dv_data *dyn_reg_data;
-
-	/*use a dummy client to get st25dv system configuration*/
+	struct i2c_client *client_sys_area;//i2c_client of the system area
+	
 	client_sys_area = i2c_new_dummy(client->adapter, SYS_ADDR);
 	if(!client_sys_area){
 		printk(KERN_WARNING "st25dv sys eeprom not detected.\n");
 		return -ENODEV;
-	}
+	} 
 	data = devm_kzalloc(&client->dev, sizeof(struct st25dv_data), GFP_KERNEL);
 	if (!data)
 		goto err_mem;
-	data->data = kmalloc(sizeof(u8)*USER_MEM_SIZE, GFP_KERNEL);
+	data->data = kmalloc(sizeof(u8)*mem_config[id->driver_data], GFP_KERNEL);
 	if (!data->data)
-		goto err_mem4;
-	sys_data = devm_kzalloc(&client_sys_area->dev, sizeof(struct st25dv_data), GFP_KERNEL);
+		goto err_mem5;
+	sys_data = devm_kzalloc(&client_sys_area->dev, sizeof(struct st25dv_data)
+				, GFP_KERNEL);
 	if (!sys_data)
-		goto err_mem3;
+		goto err_mem4;
 	sys_data->data = kmalloc(sizeof(u8)*SYS_MEM_SIZE, GFP_KERNEL);
 	if (!sys_data->data)
-		goto err_mem2;
+		goto err_mem3;
 	dyn_reg_data = kmalloc(sizeof(struct st25dv_data), GFP_KERNEL);
 	if(!dyn_reg_data)
-		goto err_mem1;
+		goto err_mem2;
 	dyn_reg_data->data = kmalloc(sizeof(u8)*DYN_REG_SIZE, GFP_KERNEL);
 	if (!dyn_reg_data->data)
-		goto err_mem0;
-	memset(data->data, 0xff, USER_MEM_SIZE);
+		goto err_mem1;
+	st25dv_lock = kmalloc(sizeof(struct mutex), GFP_KERNEL);
+	if (!st25dv_lock)
+	        goto err_mem0;    
+	mutex_init(st25dv_lock);
+	data->client =  client;
+	sys_data->client = client_sys_area;
+	dyn_reg_data->client = client;
+	memset(data->data, 0xff, mem_config[id->driver_data];);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
 	memset(dyn_reg_data->data, 0xff, DYN_REG_SIZE);
+	
 	data->next = dyn_reg_data;
+	data->update_lock = st25dv_lock;
 	dyn_reg_data->next = sys_data;
+	dyn_reg_data->update_lock = st25dv_lock;
 	sys_data->next = data;
+	sys_data->update_lock = st25dv_lock;
+	
+	memcpy(&dyn_reg_data->bin_attr, &st25dv_dyn_reg_attr, sizeof(struct bin_attribute));
+	memcpy(&sys_data->bin_attr, &st25dv_sys_attr, sizeof(struct bin_attribute));
+	memcpy(&data->bin_attr, &st25dv_user_attr, sizeof(struct bin_attribute));
+	data->bin_attr.size = mem_config[id->driver_data];
+	
 	data->type = USER_AREA;
 	dyn_reg_data->type = DYN_REG_AREA;
 	sys_data->type = SYS_AREA;
 	i2c_set_clientdata(client, data);
 	i2c_set_clientdata(client_sys_area, sys_data);
-	mutex_init(&update_lock);
-
+	
 	/* create tree sysfs eeprom files to for user area,
 	 system area and dynamic registers */
-	status = sysfs_create_bin_file(&client->dev.kobj, &st25dv_user_attr);
+	status = sysfs_create_bin_file(&client->dev.kobj, &data->bin_attr);
 	if(status < 0)
 		goto err_sysfs;
-	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
+	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &sys_data->bin_attr);
 	if(status < 0)
 		goto err_sysfs3;
-	status = sysfs_create_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
+	status = sysfs_create_bin_file(&client->dev.kobj, &dyn_reg_data->bin_attr);
 	if(status < 0)
 		goto err_sysfs2;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
@@ -433,23 +465,25 @@ static int st25dv_probe(struct i2c_client *client,
 err_sysfs0:
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
 err_sysfs1:
-	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
+	sysfs_remove_bin_file(&client->dev.kobj, &dyn_reg_data->bin_attr);
 err_sysfs2:
-	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &sys_data->bin_attr);
 err_sysfs3:
-	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_user_attr);
+	sysfs_remove_bin_file(&client->dev.kobj, &data->bin_attr);
 err_sysfs:
 	printk(KERN_WARNING "fail to create bin file.\n");
 err_mem0:
-	kfree(dyn_reg_data);
+	kfree(dyn_reg_data->data);
 err_mem1:
-	kfree(sys_data->data);
+	kfree(dyn_reg_data);
 err_mem2:
+	kfree(sys_data->data);
+err_mem3:
 	devm_kfree(&client_sys_area->dev, sys_data);
 	i2c_unregister_device(client_sys_area);
-err_mem3:
-	kfree(data->data);
 err_mem4:
+	kfree(data->data);
+err_mem5:
 	devm_kfree(&client->dev, data);
 err_mem:
 	printk(KERN_WARNING "not enougth memory.\n");
@@ -459,19 +493,37 @@ err_mem:
 static int st25dv_remove(struct i2c_client *client)
 {
 	struct st25dv_data *data = i2c_get_clientdata(client);
-	struct st25dv_data *sys_data = i2c_get_clientdata(client_sys_area);
+	struct st25dv_data *tmp_data2, *tmp_data;
+	struct i2c_client *client_sys_area;
 
-	kfree(sys_data->data);
-	kfree(data->data);
-	/*free dyn_reg_data*/
-	kfree(data->next->data);
-	kfree(data->next);
+	/*get system area client*/
+	tmp_data = data;
+	while(tmp_data->type != SYS_AREA)
+		 tmp_data = tmp_data->next;	
+	client_sys_area = tmp_data->client;
 	/*remove sysfs files*/
-	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_user_attr);
+	/*sysfs_remove_bin_file(&client->dev.kobj, &data->bin_attr);
 	sysfs_remove_bin_file(&client->dev.kobj, &st25dv_dyn_reg_attr);
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_sys_attr);
+	*/
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
 	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
+	/*free st25dv sys mem data*/
+	tmp_data = data->next;
+	while(tmp_data != data){
+	  sysfs_remove_bin_file(&tmp_data->client->dev.kobj, &tmp_data->bin_attr);
+	  tmp_data2 = tmp_data;
+	  kfree(tmp_data->data);
+	  tmp_data = tmp_data->next;
+	  if(tmp_data2->type != SYS_AREA)
+	    kfree(tmp_data2);
+	}
+	/*free st25dv user mem data*/
+	kfree(data->data);
+	kfree(data->update_lock);
+	//kfree(data->bin_attr);
+	//kfree(data);
+	/*unregister dummy device*/
 	i2c_unregister_device(client_sys_area);
 
 	return 0;
@@ -479,10 +531,9 @@ static int st25dv_remove(struct i2c_client *client)
 
 static const struct i2c_device_id st25dv_id[] = {
 	{ "st25dv", 0 },
-	{ "st25dv02k", 1 },
-	{ "st25dv04k", 2 },
-	{ "st25dv16k", 3 },
-	{ "st25dv64k", 4 },
+	{ "st25dv04k", 1 },
+	{ "st25dv16k", 2 },
+	{ "st25dv64k", 3 },
 	{ }
 };
 
