@@ -39,21 +39,24 @@
 #define PWD1_POS 		2
 #define PWD2_POS 		11
 
-#define MEM_04K 512
-#define MEM_16K 2000
-#define MEM_64K 8000
+#define MEM_04K                 512
+#define MEM_16K                 2000
+#define MEM_64K                 8000
+
+static const struct bin_attribute st25dv_p_pwd_attr;
 
 enum area_type{
-	USER_AREA,
-	SYS_AREA,
-	DYN_REG_AREA,
-	MAILBOX_AREA,
+	USER_AREA = 0,
+	SYS_AREA = 1,
+	DYN_REG_AREA = 2,
+	MAILBOX_AREA = 3,
 };
 
 /*the st25dv eeprom have two areas, the user area, and the system 
 area to manage read/write protection for the NFC interface and I2C
 interface. To drive the system area a dummy i2c_client is used*/
 static int mem_config[4] = {MEM_04K, MEM_04K, MEM_16K, MEM_64K};
+static int area_off[4] = {0, 0, DYN_REG_OFF, MAILBOX_OFF};
 
 /*one struct is used for each area*/
 struct st25dv_data {
@@ -68,17 +71,18 @@ struct st25dv_data {
 /* Addresses to scan */
 static const unsigned short normal_i2c[] = { USER_ADDR, SYS_ADDR, I2C_CLIENT_END };
 
-static ssize_t st25dv_read_area(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count, enum area_type area)
+static ssize_t st25dv_read(struct file *filp, struct kobject *kobj,
+			   struct bin_attribute *bin_attr, char *buf, loff_t off, size_t count)
 {
 	int r_size, nack;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
 	struct st25dv_data *data = i2c_get_clientdata(client);
 	u16 cur_off;
 
-	while(data->type != area)
+	while(&data->bin_attr != bin_attr){
 		data = data->next;
+	}
+	off += area_off[data->type];
 	mutex_lock(data->update_lock);
 	for(cur_off = off; cur_off-off < count; cur_off++){
 		nack = 0;
@@ -109,8 +113,7 @@ retry_:
 }
 
 static ssize_t st25dv_write_area(struct file *filp, struct kobject *kobj,
-			struct bin_attribute *bin_attr,
-			char *buf, loff_t off, size_t count, enum area_type area)
+			struct bin_attribute *bin_attr, char *buf, loff_t off, size_t count)
 {
 	int r_size;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
@@ -118,8 +121,10 @@ static ssize_t st25dv_write_area(struct file *filp, struct kobject *kobj,
 	u16 cur_off, tmp;
 	u8 nack;
 
-	while(data->type != area)
+	while(&data->bin_attr != bin_attr){
 		data = data->next;
+	}
+	off += area_off[data->type];
 	mutex_lock(data->update_lock);
 	memcpy(data->data + off, buf, count);
 	for(cur_off = off; cur_off-off < count; cur_off++){
@@ -149,9 +154,8 @@ retry_:
 //I2C_SMBUS_BLOCK_MAX = 9 page writes
 //MAX tw = 9 * 5ms
 //write_block is faster than write single byte but not supported by some adapter 
-static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
-			struct bin_attribute *bin_attr,
-			char *buf, loff_t off, size_t count, enum area_type area)
+static ssize_t st25dv_write_block(struct file *filp, struct kobject *kobj,
+				  struct bin_attribute *bin_attr, char *buf, loff_t off, size_t count)
 {
 	int r_size, to_write, not_write;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
@@ -159,8 +163,11 @@ static ssize_t st25dv_write_block_area(struct file *filp, struct kobject *kobj,
 	u16 cur_off;
 	u8 nack, tmp[I2C_SMBUS_BLOCK_MAX];
 
-	while(data->type != area)
+
+	while(&data->bin_attr != bin_attr){
 		data = data->next;
+	}
+	off += area_off[data->type];
 	mutex_lock(data->update_lock);
 	memcpy(data->data + off, buf, count);
 	not_write = count;
@@ -195,13 +202,14 @@ retry_:
 
 static ssize_t st25dv_send_pwd_req(struct file *filp, struct kobject *kobj,
 			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count, u8 cmd)
+				   char *buf, loff_t off, size_t count)
 {
-	u8 pwd_req[PWD_REQ_SIZE], *pwd_ptr1, *pwd_ptr2;
+	u8 pwd_req[PWD_REQ_SIZE], cmd, *pwd_ptr1, *pwd_ptr2;
 	int r_size, off_tmp, nack;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
 	struct st25dv_data *data = i2c_get_clientdata(client);
-	
+
+	cmd = bin_attr == &st25dv_p_pwd_attr ? CMD_PRESENT_PWD : CMD_WRITE_PWD;
 	if(count != PWD_SIZE){
 		printk(KERN_WARNING "st25dv: send pwd cmd fail count=%d.\n", count);
 		return count;
@@ -235,80 +243,14 @@ retry_:
 	return count;
 }
 
-static ssize_t st25dv_read_dyn_reg(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_read_area(filp, kobj, bin_attr, buf, off + DYN_REG_OFF,
-							 count, DYN_REG_AREA);
-}
-
-static ssize_t st25dv_read_user_mem(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_read_area(filp, kobj, bin_attr, buf, off,
-							 count, USER_AREA);
-}
-
-static ssize_t st25dv_read_sys_mem(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_read_area(filp, kobj, bin_attr, buf, off,
-							 count, SYS_AREA);
-}
-
-static ssize_t st25dv_write_dyn_reg(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_write_area(filp, kobj, bin_attr, buf, off + DYN_REG_OFF,
-							 count, DYN_REG_AREA);
-}
-
-static ssize_t st25dv_write_user_mem(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_write_block_area(filp, kobj, bin_attr, buf, off,
-							 count, USER_AREA);
-	/*return st25dv_write_area(filp, kobj, bin_attr, buf, off,
-							 count, USER_AREA);*/
-}
-
-static ssize_t st25dv_write_sys_mem(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_write_area(filp, kobj, bin_attr, buf, off,
-							 count, SYS_AREA);
-}
-
-static ssize_t st25dv_present_pwd(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_send_pwd_req(filp, kobj, bin_attr, buf, off,
-							 count, CMD_PRESENT_PWD);
-}
-
-static ssize_t st25dv_write_pwd(struct file *filp, struct kobject *kobj,
-			   struct bin_attribute *bin_attr,
-			   char *buf, loff_t off, size_t count)
-{
-	return st25dv_send_pwd_req(filp, kobj, bin_attr, buf, off,
-							 count, CMD_WRITE_PWD);
-}
-
 static struct bin_attribute st25dv_user_attr = {
 	.attr = {
 		.name = "st25dv_user",
 		.mode = S_IRUGO|S_IWUGO,
 	},
 	.size = USER_MEM_SIZE,
-	.read = st25dv_read_user_mem,
-	.write = st25dv_write_user_mem,
+	.read = st25dv_read,
+	.write = st25dv_write_block,
 };
 
 static const struct bin_attribute st25dv_sys_attr = {
@@ -317,18 +259,18 @@ static const struct bin_attribute st25dv_sys_attr = {
 		.mode = S_IRUGO|S_IWUSR,
 	},
 	.size = SYS_MEM_SIZE,
-	.read = st25dv_read_sys_mem,
-	.write = st25dv_write_sys_mem,
+	.read = st25dv_read,
+	.write = st25dv_write_block,
 };
 
 static const struct bin_attribute st25dv_dyn_reg_attr = {
         .attr = {
                 .name = "st25dv_dyn_reg",
                 .mode = S_IRUGO|S_IWUSR,
-        },
+  },
         .size = DYN_REG_SIZE,
-        .read = st25dv_read_dyn_reg,
-        .write = st25dv_write_dyn_reg,
+        .read = st25dv_read,
+        .write = st25dv_write_block,
 };
 
 static const struct bin_attribute st25dv_w_pwd_attr = {
@@ -337,7 +279,7 @@ static const struct bin_attribute st25dv_w_pwd_attr = {
 		.mode = S_IWUSR,
 	},
 	.size = PWD_SIZE,
-	.write = st25dv_write_pwd,
+	.write = st25dv_send_pwd_req,
 };
 
 static const struct bin_attribute st25dv_p_pwd_attr = {
@@ -346,7 +288,7 @@ static const struct bin_attribute st25dv_p_pwd_attr = {
 		.mode = S_IWUSR,
 	},
 	.size = PWD_SIZE,
-	.write = st25dv_present_pwd,
+	.write = st25dv_send_pwd_req,
 };
 
 /* Return 0 if detection is successful, -ENODEV otherwise */
@@ -501,14 +443,14 @@ static int st25dv_remove(struct i2c_client *client)
 	/*free all st25dv data allocations*/
 	tmp_data = data->next;
 	while(tmp_data != data){
-	  /*remove areas sysfs files*/
-	  sysfs_remove_bin_file(&tmp_data->client->dev.kobj, &tmp_data->bin_attr);
-	  tmp_data2 = tmp_data;
-	  kfree(tmp_data->data);
-	  tmp_data = tmp_data->next;
-	  /*sys_area data will be free by i2c_unregister_device*/
-	  if(tmp_data2->type != SYS_AREA)
-	    kfree(tmp_data2);
+		/*remove areas sysfs files*/
+		sysfs_remove_bin_file(&tmp_data->client->dev.kobj, &tmp_data->bin_attr);
+		tmp_data2 = tmp_data;
+		kfree(tmp_data->data);
+		tmp_data = tmp_data->next;
+		/*sys_area data will be free by i2c_unregister_device*/
+		if(tmp_data2->type != SYS_AREA)
+			kfree(tmp_data2);
 	}
 	/*free st25dv user mem data*/
 	kfree(data->data);
