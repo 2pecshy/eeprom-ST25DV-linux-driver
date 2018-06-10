@@ -25,7 +25,7 @@ Aviable in write only, this file descriptor is to present the password of the se
 
 Aviable in write only, this file descriptor is to change the password of the security session
 
-	The system configuration is available at /sys/bus/i2c/devices/X-0057/st25dv_write_pwd
+	The file descriptor is available at /sys/bus/i2c/devices/X-0057/st25dv_write_pwd
 
 #### At address 0x53:
 
