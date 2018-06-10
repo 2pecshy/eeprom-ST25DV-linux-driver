@@ -12,17 +12,26 @@ the right data even if a write has been done by NFC.
 	OS: Raspbian
 	Kernel: linux 4.14.30+
 
-#### The STV25DV have two areas:
+#### The STV25DV is aviable on two address:
 
-The system configuration at address 0x57:
+####At address 0x57:
 
-	The system configuration is the area to configure the ST25DV for NFC and I2C access.
+The system configuration is the area to configure the ST25DV for NFC and I2C access.
 	The system configuration is available at /sys/bus/i2c/devices/X-0057/st25dv_sys
 
-The user area at address 0x53:
+Aviable in write only, this file descriptor is to present the password of the security session
+	The file descriptor is available at /sys/bus/i2c/devices/X-0057/st25dv_present_pwd
 
-	The user area is the area to store user data like NDEF file.
+Aviable in write only, this file descriptor is to change the password of the security session
+	The system configuration is available at /sys/bus/i2c/devices/X-0057/st25dv_write_pwd
+
+####The user area at address 0x53:
+
+The user area is the area to store user data like NDEF file.
 	The user area is available at /sys/bus/i2c/devices/X-0053/st25dv_user
+
+The dynamics registers give information about the curent state of the chip(ex: if the chip is in the NFC Field).
+	Dynamics registers are available at /sys/bus/i2c/devices/X-0053/st25dv_dyn_reg
 
 ### Setup on RaspberryPi:
 
@@ -94,7 +103,7 @@ Enable security session status by present password:
 
 Check security session status:
 
-	xxd -s4 -l1 -p /sys/bus/i2c/devices/1-0053/st25dv_dyn_reg
+	xxd -s4 -l1 -p /sys/bus/i2c/devices/X-0053/st25dv_dyn_reg
 	01
 
 Disable security session status by present bad password:
