@@ -13,8 +13,7 @@ the right data even if a write has been done by NFC.
 	Kernel: linux 4.14.30+
 
 #### The STV25DV is aviable on two address:
-
-####At address 0x57:
+#### At address 0x57:
 
 The system configuration is the area to configure the ST25DV for NFC and I2C access.
 	The system configuration is available at /sys/bus/i2c/devices/X-0057/st25dv_sys
@@ -25,7 +24,7 @@ Aviable in write only, this file descriptor is to present the password of the se
 Aviable in write only, this file descriptor is to change the password of the security session
 	The system configuration is available at /sys/bus/i2c/devices/X-0057/st25dv_write_pwd
 
-####The user area at address 0x53:
+#### At address 0x53:
 
 The user area is the area to store user data like NDEF file.
 	The user area is available at /sys/bus/i2c/devices/X-0053/st25dv_user
