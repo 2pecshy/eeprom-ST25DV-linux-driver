@@ -59,7 +59,17 @@ Insert the module into the kernel:
 
 Tell the presence of the ST25DV to the kernel:
 
-	echo st25dv 0x53 > /sys/bus/i2c/devices/i2c-X/new_device
+for 4Kb memory size
+
+	echo st25dv04k 0x53 > /sys/bus/i2c/devices/i2c-X/new_device
+
+for 16Kb memory size
+
+    	echo st25dv16k 0x53 > /sys/bus/i2c/devices/i2c-X/new_device
+
+for 64Kb memory size
+
+    	echo st25dv64k 0x53 > /sys/bus/i2c/devices/i2c-X/new_device
 
 #### Test the driver:
 
