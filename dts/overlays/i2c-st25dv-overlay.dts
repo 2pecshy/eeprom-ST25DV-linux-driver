@@ -1,0 +1,25 @@
+// Definitions for st25dv EEPROM NFC dynamic Tag
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2708";
+
+	fragment@0 {
+		target = <&i2c1>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			st25dv04k: st25dv04k@53 {
+				compatible = "st25dv,st25dv04k";
+				reg = <0x53>;
+				status = "okay";
+			};
+		};
+	};
+	__overrides__ {
+		st25dv04k = <&st25dv04k>,"status";
+	};
+};
