@@ -58,6 +58,27 @@ Insert the module into the kernel:
 	sudo insmod st25dv.ko
 
 #### Tell the presence of the ST25DV to the kernel:
+##### Declare the ST25DV via devicetree:
+
+build the device tree overlay(/dts/overlay):
+
+	make
+
+copy i2c-st25dv-overlay.dtb in /boot/overlay:
+
+	sudo cp i2c-st25dv-overlay.dtb /boot/overlays/
+
+add the	DeviceTree overlay to /boot/config.txt:	
+
+	add the	line: dtoverlay=i2c-st25dv
+	
+to load the driver at boot:
+
+	add the line to /etc/modules: st25dv
+	sudo cp st25dv.ko /lib/modules/$(uname -r)/kernel/drivers/
+	sudo depmod
+
+##### Or declare ST25DV from user-space
 
 for 4Kb memory size
 
