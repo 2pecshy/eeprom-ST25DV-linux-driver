@@ -24,6 +24,7 @@
 #define DYN_REG_SIZE		0x8
 #define SYS_MEM_SIZE		0x24
 #define USER_MEM_SIZE		0x200
+#define MAILBOX_MEM_SIZE        0x100
 #define SYS_ADDR		0x57
 #define USER_ADDR		0x53
 #define PWD_OFF			0x0900
@@ -273,6 +274,16 @@ static const struct bin_attribute st25dv_dyn_reg_attr = {
         .write = st25dv_write_block,
 };
 
+static const struct bin_attribute st25dv_mailbox_attr = {
+        .attr = {
+                .name = "st25dv_mailbox",
+                .mode = S_IRUGO|S_IWUGO,
+  },
+        .size = MAILBOX_MEM_SIZE,
+        .read = st25dv_read,
+        .write = st25dv_write_block,
+};
+
 static const struct bin_attribute st25dv_w_pwd_attr = {
 	.attr = {
 		.name = "st25dv_write_pwd",
@@ -323,6 +334,7 @@ static int st25dv_probe(struct i2c_client *client,
 	struct st25dv_data *data;
 	struct st25dv_data *sys_data;
 	struct st25dv_data *dyn_reg_data;
+	struct st25dv_data *mailbox_data;
 	struct i2c_client *client_sys_area;//i2c_client of the system area
 
 	/*dummy client for the system area at addr 0x57*/
@@ -336,39 +348,51 @@ static int st25dv_probe(struct i2c_client *client,
 		goto err_mem;
 	data->data = kmalloc(sizeof(u8)*mem_config[id->driver_data], GFP_KERNEL);
 	if (!data->data)
-		goto err_mem5;
+		goto err_mem7;
 	sys_data = devm_kzalloc(&client_sys_area->dev, sizeof(struct st25dv_data)
 				, GFP_KERNEL);
 	if (!sys_data)
-		goto err_mem4;
+		goto err_mem6;
 	sys_data->data = kmalloc(sizeof(u8)*SYS_MEM_SIZE, GFP_KERNEL);
 	if (!sys_data->data)
-		goto err_mem3;
+		goto err_mem5;
 	dyn_reg_data = kmalloc(sizeof(struct st25dv_data), GFP_KERNEL);
 	if(!dyn_reg_data)
-		goto err_mem2;
+		goto err_mem4;
 	dyn_reg_data->data = kmalloc(sizeof(u8)*DYN_REG_SIZE, GFP_KERNEL);
 	if (!dyn_reg_data->data)
+		goto err_mem3;
+	mailbox_data = kmalloc(sizeof(struct st25dv_data), GFP_KERNEL);
+	if(!mailbox_data)
+		goto err_mem2;
+        mailbox_data->data = kmalloc(sizeof(u8)*MAILBOX_MEM_SIZE, GFP_KERNEL);
+	if (!mailbox_data->data)
 		goto err_mem1;
+
 	st25dv_lock = kmalloc(sizeof(struct mutex), GFP_KERNEL);
 	if (!st25dv_lock)
 	        goto err_mem0;    
 	mutex_init(st25dv_lock);
 	data->client =  client;
 	sys_data->client = client_sys_area;
+	mailbox_data->client = client_sys_area;
 	dyn_reg_data->client = client;
 	memset(data->data, 0xff, mem_config[id->driver_data];);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
 	memset(dyn_reg_data->data, 0xff, DYN_REG_SIZE);
+	memset(mailbox_data->data, 0xff, MAILBOX_MEM_SIZE);
 
 	/*set circular linked list and shared mutex*/
 	data->next = dyn_reg_data;
 	data->update_lock = st25dv_lock;
-	dyn_reg_data->next = sys_data;
+	dyn_reg_data->next = mailbox_data;
 	dyn_reg_data->update_lock = st25dv_lock;
+	mailbox_data->next = sys_data;
+        mailbox_data->update_lock = st25dv_lock;
 	sys_data->next = data;
 	sys_data->update_lock = st25dv_lock;
-	
+
+	memcpy(&mailbox_data->bin_attr, &st25dv_mailbox_attr, sizeof(struct bin_attribute));
 	memcpy(&dyn_reg_data->bin_attr, &st25dv_dyn_reg_attr, sizeof(struct bin_attribute));
 	memcpy(&sys_data->bin_attr, &st25dv_sys_attr, sizeof(struct bin_attribute));
 	memcpy(&data->bin_attr, &st25dv_user_attr, sizeof(struct bin_attribute));
@@ -376,6 +400,7 @@ static int st25dv_probe(struct i2c_client *client,
 	data->type = USER_AREA;
 	dyn_reg_data->type = DYN_REG_AREA;
 	sys_data->type = SYS_AREA;
+	mailbox_data->type = MAILBOX_AREA;
 	i2c_set_clientdata(client, data);
 	i2c_set_clientdata(client_sys_area, sys_data);
 	
@@ -386,40 +411,49 @@ static int st25dv_probe(struct i2c_client *client,
 		goto err_sysfs;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &sys_data->bin_attr);
 	if(status < 0)
-		goto err_sysfs3;
+		goto err_sysfs4;
 	status = sysfs_create_bin_file(&client->dev.kobj, &dyn_reg_data->bin_attr);
 	if(status < 0)
-		goto err_sysfs2;
+		goto err_sysfs3;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
 	if(status < 0)
-		goto err_sysfs1;
+		goto err_sysfs2;
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
+	if(status < 0)
+		goto err_sysfs1;
+	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &mailbox_data->bin_attr);
 	if(status < 0)
 		goto err_sysfs0;
 	printk(KERN_WARNING "st25dv eeprom create bin file.\n");
 	return status;
 err_sysfs0:
-	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
 err_sysfs1:
-	sysfs_remove_bin_file(&client->dev.kobj, &dyn_reg_data->bin_attr);
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &st25dv_w_pwd_attr);
 err_sysfs2:
-	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &sys_data->bin_attr);
+	sysfs_remove_bin_file(&client->dev.kobj, &dyn_reg_data->bin_attr);
 err_sysfs3:
+	sysfs_remove_bin_file(&client_sys_area->dev.kobj, &sys_data->bin_attr);
+err_sysfs4:
 	sysfs_remove_bin_file(&client->dev.kobj, &data->bin_attr);
 err_sysfs:
 	printk(KERN_WARNING "fail to create bin file.\n");
 err_mem0:
-	kfree(dyn_reg_data->data);
+	kfree(mailbox_data->data);
 err_mem1:
-	kfree(dyn_reg_data);
+	kfree(mailbox_data);
 err_mem2:
-	kfree(sys_data->data);
+	kfree(dyn_reg_data->data);
 err_mem3:
+	kfree(dyn_reg_data);
+err_mem4:
+	kfree(sys_data->data);
+err_mem5:
 	devm_kfree(&client_sys_area->dev, sys_data);
 	i2c_unregister_device(client_sys_area);
-err_mem4:
+err_mem6:
 	kfree(data->data);
-err_mem5:
+err_mem7:
 	devm_kfree(&client->dev, data);
 err_mem:
 	printk(KERN_WARNING "not enougth memory.\n");

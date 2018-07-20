@@ -75,7 +75,7 @@ add the	DeviceTree overlay to /boot/config.txt:
 to load the driver at boot:
 
 	add the line to /etc/modules: st25dv
-	sudo cp st25dv.ko /lib/modules/$(uname -r)/kernel/drivers/
+	sudo cp st25dv.ko /lib/modules/$(uname -r)/kernel/drivers/misc/eeprom/
 	sudo depmod
 
 ##### Or declare ST25DV from user-space
