@@ -375,7 +375,7 @@ static int st25dv_probe(struct i2c_client *client,
 	mutex_init(st25dv_lock);
 	data->client =  client;
 	sys_data->client = client_sys_area;
-	mailbox_data->client = client_sys_area;
+	mailbox_data->client = client;
 	dyn_reg_data->client = client;
 	memset(data->data, 0xff, mem_config[id->driver_data];);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
@@ -421,7 +421,7 @@ static int st25dv_probe(struct i2c_client *client,
 	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &st25dv_p_pwd_attr);
 	if(status < 0)
 		goto err_sysfs1;
-	status = sysfs_create_bin_file(&client_sys_area->dev.kobj, &mailbox_data->bin_attr);
+	status = sysfs_create_bin_file(&client->dev.kobj, &mailbox_data->bin_attr);
 	if(status < 0)
 		goto err_sysfs0;
 	printk(KERN_WARNING "st25dv eeprom create bin file.\n");
