@@ -37,6 +37,10 @@ The dynamics registers give information about the curent state of the chip(ex: i
 
 	Dynamics registers are available at /sys/bus/i2c/devices/X-0053/st25dv_dyn_reg
 
+The mailbox is a shared buffer with the NFC interface
+
+	Mailbox is available at /sys/bus/i2c/devices/X-0053/st25dv_mailbox
+
 ### Setup on RaspberryPi:
 
 To compile a module, linux headers are requested:
