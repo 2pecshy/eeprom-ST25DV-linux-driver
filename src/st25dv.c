@@ -108,7 +108,7 @@ retry_:
 	}
 	memcpy(buf, &data->data[off], count);
 	mutex_unlock(data->update_lock);
-	printk(KERN_WARNING "st25dv: %d byte reads.\n",count);
+	//printk(KERN_WARNING "st25dv: %d byte reads.\n",count);
 
 	return count;
 }
@@ -147,7 +147,7 @@ retry_:
 
 	}
 	mutex_unlock(data->update_lock);
-	printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
+	//printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
 
 	return count;
 }
@@ -161,9 +161,8 @@ static ssize_t st25dv_write_block(struct file *filp, struct kobject *kobj,
 	int r_size, to_write, not_write;
 	struct i2c_client *client = to_i2c_client(kobj_to_dev(kobj));
 	struct st25dv_data *data = i2c_get_clientdata(client);
-	u16 cur_off;
+	u16 cur_off, cur_buf_off;
 	u8 nack, tmp[I2C_SMBUS_BLOCK_MAX];
-
 
 	while(&data->bin_attr != bin_attr){
 		data = data->next;
@@ -173,13 +172,14 @@ static ssize_t st25dv_write_block(struct file *filp, struct kobject *kobj,
 	memcpy(data->data + off, buf, count);
 	not_write = count;
 	cur_off = off;
+	cur_buf_off = 0;
 	while(not_write){
 		nack = 0;
 		to_write = not_write > I2C_SMBUS_BLOCK_MAX-2 ? I2C_SMBUS_BLOCK_MAX-2 : not_write;
 		not_write -= to_write;
 		tmp[1] = cur_off;
 		tmp[0] = cur_off >> 8;
-		memcpy(tmp + 2, buf + cur_off, to_write);
+		memcpy(tmp + 2, buf + cur_buf_off, to_write);
 retry_:
 		if(nack > MAX_TRY){
 			mutex_unlock(data->update_lock);
@@ -193,10 +193,11 @@ retry_:
 		}
 		mdelay(20);
 		cur_off += to_write;
+		cur_buf_off += to_write;
 	}
 
 	mutex_unlock(data->update_lock);
-	printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
+	//printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
 
 	return count;
 }
@@ -240,7 +241,8 @@ retry_:
 		goto retry_;
 	}
 	mutex_unlock(data->update_lock);
-	printk(KERN_WARNING "st25dv: send pwd cmd send.\n");
+	//printk(KERN_WARNING "st25dv: send pwd cmd send.\n");
+
 	return count;
 }
 
@@ -261,7 +263,7 @@ static const struct bin_attribute st25dv_sys_attr = {
 	},
 	.size = SYS_MEM_SIZE,
 	.read = st25dv_read,
-	.write = st25dv_write_block,
+        .write = st25dv_write_block,
 };
 
 static const struct bin_attribute st25dv_dyn_reg_attr = {
