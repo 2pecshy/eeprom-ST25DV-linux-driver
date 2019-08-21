@@ -489,6 +489,7 @@ static int st25dv_remove(struct i2c_client *client)
 			kfree(tmp_data2);
 	}
 	/*free st25dv user mem data*/
+	sysfs_remove_bin_file(&data->client->dev.kobj, &tmp_data->bin_attr);
 	kfree(data->data);
 	kfree(data->update_lock);
 	/*unregister dummy device*/
