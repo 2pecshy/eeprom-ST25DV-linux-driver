@@ -379,7 +379,7 @@ static int st25dv_probe(struct i2c_client *client,
 	sys_data->client = client_sys_area;
 	mailbox_data->client = client;
 	dyn_reg_data->client = client;
-	memset(data->data, 0xff, mem_config[id->driver_data];);
+	memset(data->data, 0xff, mem_config[id->driver_data]);
 	memset(sys_data->data, 0xff, SYS_MEM_SIZE);
 	memset(dyn_reg_data->data, 0xff, DYN_REG_SIZE);
 	memset(mailbox_data->data, 0xff, MAILBOX_MEM_SIZE);
