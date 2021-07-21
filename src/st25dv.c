@@ -196,6 +196,24 @@ retry_:
 		cur_buf_off += to_write;
 	}
 
+	//ACK Polling after last sent data chunk
+	nack = 0;
+	while (true) {
+		if(nack > MAX_TRY){
+			mutex_unlock(data->update_lock);
+			//printk(KERN_ERR "st25dv: ERROR too many NACKS. Device seems to be busy.\n");
+			return r_size;
+		}
+
+		r_size = i2c_master_send(client, "", 0);
+		if(r_size == 0) {
+			break;
+		} else {
+			nack++;
+			mdelay(5);
+		}
+	}
+
 	mutex_unlock(data->update_lock);
 	//printk(KERN_WARNING "st25dv: %d byte writes.\n",count);
 
