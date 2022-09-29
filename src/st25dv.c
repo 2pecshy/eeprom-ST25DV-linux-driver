@@ -41,8 +41,8 @@
 #define PWD2_POS 		11
 
 #define MEM_04K                 512
-#define MEM_16K                 2000
-#define MEM_64K                 8000
+#define MEM_16K                 2048
+#define MEM_64K                 8192
 
 static const struct bin_attribute st25dv_p_pwd_attr;
 
